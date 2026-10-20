@@ -104,7 +104,8 @@
   }
   function loadSetup() {
     $('set-status').textContent = 'Loading your entities…';
-    Promise.all([api('api/settings'), api('api/entities')]).then(function (r) {
+    var empty = {light: [], scene: [], climate: [], weather: []}, problem = '';
+    Promise.all([api('api/settings'), api('api/entities').catch(function (error) { problem = error.message; return empty; })]).then(function (r) {
       var s = r[0], e = r[1], scenes = s.scenes || [];
       $('set-room').value = s.room_title || ''; $('set-light-label').value = s.light_label || ''; $('set-climate-label').value = s.climate_label || '';
       fill($('set-light'), null, s.light, [
@@ -115,7 +116,7 @@
       $('set-theme').value = s.theme || 'auto';
       var rotate = $('set-rotate'); if (![].some.call(rotate.options, function (o) { return o.value === String(s.rotate_minutes); })) { var o = el('option', '', s.rotate_minutes + ' minutes'); o.value = s.rotate_minutes; rotate.appendChild(o); }
       rotate.value = String(s.rotate_minutes);
-      $('set-status').textContent = '';
+      $('set-status').textContent = problem;
     }, function (error) { $('set-status').textContent = error.message; });
   }
   $('set-save').onclick = function () {
@@ -132,6 +133,7 @@
   function loadStatus() {
     api('api/status').then(function (status) {
       var list = $('checks'); list.textContent = '';
+      if (status.homeAssistant) list.appendChild(el('li', 'missing', 'Can’t reach Home Assistant: ' + status.homeAssistant));
       if (!status.entities.length) list.appendChild(el('li', '', 'Nothing chosen yet. Pick entities above and save.'));
       status.entities.forEach(function (check) {
         var li = el('li'), name = el('span'); name.appendChild(document.createTextNode(check.label + ' ')); name.appendChild(el('code', '', check.entity));

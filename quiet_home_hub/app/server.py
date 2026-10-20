@@ -121,7 +121,12 @@ class Hub:
                 missing = ('unavailable', None) if label == 'Scene' else dashboard.UNAVAILABLE
                 checks.append({'label': label, 'entity': entity_id, 'found': dashboard.read_state(self.ha, entity_id, missing) is not None})
         counts = {p: len(self.library.photos((p,))) for p in PERIODS}
-        return {'entities': checks, 'photos': counts, 'keySet': bool(self.key), 'tvPort': 8098}
+        try:
+            self.ha.state('sun.sun')
+            problem = ''
+        except Exception as error:
+            problem = str(error)
+        return {'entities': checks, 'photos': counts, 'keySet': bool(self.key), 'tvPort': 8098, 'homeAssistant': problem}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -245,7 +250,7 @@ class ParentHandler(Handler):
                 return self.json(self.hub.entities())
             except Exception as error:
                 log.warning('Could not list entities: %s', error)
-                return self.error(502, 'Could not reach Home Assistant')
+                return self.error(502, 'Could not load entities from Home Assistant (%s). Restart the add-on; if it persists, check its log.' % error)
         if path == '/api/settings':
             return self.json({k: self.hub.options.get(k) for k in SETTINGS})
         if path == '/api/dashboard':
@@ -317,7 +322,15 @@ def main():
             options.update(json.loads((data_dir / 'options.json').read_text()))
         except (OSError, ValueError):
             log.warning('No add-on options found; using defaults')
-        ha = HomeAssistant('http://supervisor/core', os.environ.get('SUPERVISOR_TOKEN', ''))
+        token = os.environ.get('SUPERVISOR_TOKEN', '')
+        if not token:
+            # Fallback when started without with-contenv: s6 keeps the add-on environment here.
+            try:
+                token = Path('/run/s6/container_environment/SUPERVISOR_TOKEN').read_text().strip()
+            except OSError:
+                pass
+        log.info('Home Assistant access token %s', 'found' if token else 'MISSING: controls and entity lists will not work')
+        ha = HomeAssistant('http://supervisor/core', token)
     Handler.hub = Hub(options, ha, Library(media), data_dir)
     serve(TVHandler, a.tv_port)
     log.info('TV API on port %d, parent app on port %d%s', a.tv_port, a.parent_port, ' (dev)' if a.dev else '')
