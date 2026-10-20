@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quiet Home</title><link rel="stylesheet" href="parent.css"></head>
+<body>
+<header><h1>Quiet Home</h1><p>What the living-room TV shows</p>
+  <nav role="tablist"><button role="tab" data-tab="photos" aria-selected="true">Photos</button><button role="tab" data-tab="notes">Family notes</button><button role="tab" data-tab="tv">TV</button></nav>
+</header>
+<main>
+  <section id="photos" class="tab">
+    <div class="card upload">
+      <h2>Add photos</h2>
+      <p class="hint">They’re resized for the TV and their location data is removed.</p>
+      <div class="segmented" id="upload-period"><button data-period="any" class="on">Any time</button><button data-period="day">Day</button><button data-period="night">Night</button></div>
+      <input id="upload-caption" placeholder="Caption (optional), e.g. Llyn Padarn · Gem" maxlength="120">
+      <label class="button primary">Choose photos<input id="upload-files" type="file" accept="image/*" multiple hidden></label>
+      <p id="upload-status" class="hint" role="status"></p>
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>No photos yet. The TV shows its built-in sky until you add some.</p>
+  </section>
+  <section id="notes" class="tab" hidden>
+    <div class="card">
+      <h2>Family notes</h2>
+      <p class="hint">Up to three short notes for the TV, like “Bins — Recycling tomorrow”.</p>
+      <label class="field">Card title<input id="notes-title" maxlength="30" placeholder="Family"></label>
+      <div id="notes-rows"></div>
+      <button class="button primary" id="notes-save">Save notes</button>
+      <p id="notes-status" class="hint" role="status"></p>
+    </div>
+  </section>
+  <section id="tv" class="tab" hidden>
+    <div class="card">
+      <h2>Home Assistant</h2>
+      <p class="hint">Choose the lights, scenes, heating and weather in the add-on’s Configuration tab.</p>
+      <ul class="checks" id="checks"></ul>
+    </div>
+    <div class="card">
+      <h2>Connecting the TV</h2>
+      <p class="hint">The TV reads this hub on port <b id="tv-port">8098</b> of your Home Assistant Green, e.g. <code>http://homeassistant.local:8098</code>. Use the Green’s fixed IP address on the TV.</p>
+      <p id="key-status"></p>
+    </div>
+  </section>
+</main>
+<script src="parent.js"></script>
+</body></html>
