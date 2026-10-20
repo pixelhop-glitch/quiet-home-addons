@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import threading
 import urllib.parse
 
@@ -24,15 +25,70 @@ INGRESS_PROXY = '172.30.32.2'
 DEFAULTS = {'tv_key': '', 'theme': 'auto', 'rotate_minutes': 15, 'room_title': 'Living room', 'light': '', 'light_label': 'Lights',
             'scenes': [], 'climate': '', 'climate_label': 'Heating', 'weather': ''}
 DEV_OPTIONS = {'light': 'light.living_room', 'scenes': ['scene.movie_night'], 'climate': 'climate.heating', 'weather': 'weather.home', 'rotate_minutes': 1}
+# Chosen on the sidebar Setup tab; they override add-on options. The TV key stays in the add-on options.
+SETTINGS = ('theme', 'rotate_minutes', 'room_title', 'light', 'light_label', 'scenes', 'climate', 'climate_label', 'weather')
+PICKERS = {'light': ('light', 'switch'), 'scene': ('scene',), 'climate': ('climate',), 'weather': ('weather',)}
+ENTITY = re.compile(r'^[a-z_]+\.[a-z0-9_]+$')
 STATIC = {'/': ('index.html', 'text/html; charset=utf-8'), '/parent.js': ('parent.js', 'text/javascript'), '/parent.css': ('parent.css', 'text/css')}
 IMAGES = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
 
 
 class Hub:
     def __init__(self, options, ha, library, data_dir):
-        self.options, self.ha, self.library = options, ha, library
+        self.base, self.ha, self.library = options, ha, library
         self.notes_file = Path(data_dir) / 'notes.json'
+        self.settings_file = Path(data_dir) / 'settings.json'
         self.lock = threading.Lock()
+        try:
+            self.settings = json.loads(self.settings_file.read_text())
+        except (OSError, ValueError):
+            self.settings = {}
+
+    @property
+    def options(self):
+        merged = dict(self.base)
+        merged.update({k: v for k, v in self.settings.items() if k in SETTINGS})
+        return merged
+
+    def entities(self):
+        groups = {kind: [] for kind in PICKERS}
+        for state in self.ha.states():
+            entity_id = state.get('entity_id', '')
+            for kind, domains in PICKERS.items():
+                if entity_id.split('.')[0] in domains:
+                    groups[kind].append({'id': entity_id, 'name': state.get('attributes', {}).get('friendly_name') or entity_id})
+        for items in groups.values():
+            items.sort(key=lambda e: e['name'].lower())
+        return groups
+
+    def save_settings(self, data):
+        def entity(value, kind):
+            value = str(value or '')
+            if value and (not ENTITY.match(value) or value.split('.')[0] not in PICKERS[kind]):
+                raise ValueError('%s is not a %s entity' % (value, kind))
+            return value
+        def label(value, fallback):
+            return str(value or '').strip()[:30] or fallback
+        scenes = [entity(s, 'scene') for s in data.get('scenes') or [] if s]
+        theme = data.get('theme', 'auto')
+        if theme not in ('auto', 'bento', 'gallery'):
+            raise ValueError('unknown theme')
+        try:
+            rotate = int(data.get('rotate_minutes', 15))
+        except (TypeError, ValueError):
+            raise ValueError('rotate_minutes must be a number')
+        clean = {'theme': theme, 'rotate_minutes': max(1, min(240, rotate)),
+                 'room_title': label(data.get('room_title'), 'Living room'),
+                 'light': entity(data.get('light'), 'light'), 'light_label': label(data.get('light_label'), 'Lights'),
+                 'scenes': list(dict.fromkeys(scenes))[:2],
+                 'climate': entity(data.get('climate'), 'climate'), 'climate_label': label(data.get('climate_label'), 'Heating'),
+                 'weather': entity(data.get('weather'), 'weather')}
+        with self.lock:
+            temp = self.settings_file.with_suffix('.tmp')
+            temp.write_text(json.dumps(clean, indent=1))
+            os.replace(temp, self.settings_file)
+            self.settings = clean
+        return clean
 
     @property
     def key(self):
@@ -62,7 +118,8 @@ class Hub:
                                  ('Weather', self.options.get('weather')), ('Sunrise and sunset', 'sun.sun')] + \
                                 [('Scene', s) for s in self.options.get('scenes') or []]:
             if entity_id:
-                checks.append({'label': label, 'entity': entity_id, 'found': dashboard.read_state(self.ha, entity_id) is not None})
+                missing = ('unavailable', None) if label == 'Scene' else dashboard.UNAVAILABLE
+                checks.append({'label': label, 'entity': entity_id, 'found': dashboard.read_state(self.ha, entity_id, missing) is not None})
         counts = {p: len(self.library.photos((p,))) for p in PERIODS}
         return {'entities': checks, 'photos': counts, 'keySet': bool(self.key), 'tvPort': 8098}
 
@@ -183,6 +240,14 @@ class ParentHandler(Handler):
             return self.json(self.hub.notes())
         if path == '/api/status':
             return self.json(self.hub.status())
+        if path == '/api/entities':
+            try:
+                return self.json(self.hub.entities())
+            except Exception as error:
+                log.warning('Could not list entities: %s', error)
+                return self.error(502, 'Could not reach Home Assistant')
+        if path == '/api/settings':
+            return self.json({k: self.hub.options.get(k) for k in SETTINGS})
         if path == '/api/dashboard':
             return self.json(self.hub.dashboard(key=''))
         if path.startswith('/thumbs/'):
@@ -216,6 +281,8 @@ class ParentHandler(Handler):
                 return self.json({'ok': True})
             if path == '/api/notes':
                 return self.json(self.hub.save_notes(data))
+            if path == '/api/settings':
+                return self.json(self.hub.save_settings(data))
         except ValueError as error:
             return self.error(400, str(error))
         self.error(404, 'not found')

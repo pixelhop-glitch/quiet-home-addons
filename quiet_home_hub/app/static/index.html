@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quiet Home</title><link rel="stylesheet" href="parent.css"></head>
 <body>
 <header><h1>Quiet Home</h1><p>What the living-room TV shows</p>
-  <nav role="tablist"><button role="tab" data-tab="photos" aria-selected="true">Photos</button><button role="tab" data-tab="notes">Family notes</button><button role="tab" data-tab="tv">TV</button></nav>
+  <nav role="tablist"><button role="tab" data-tab="photos" aria-selected="true">Photos</button><button role="tab" data-tab="notes">Family notes</button><button role="tab" data-tab="tv">Setup</button></nav>
 </header>
 <main>
   <section id="photos" class="tab">
@@ -30,9 +30,21 @@
     </div>
   </section>
   <section id="tv" class="tab" hidden>
+    <div class="card setup">
+      <h2>What the TV can show and control</h2>
+      <p class="hint">Only what you pick here can be controlled from the TV.</p>
+      <label class="field">Room title<input id="set-room" maxlength="30" placeholder="Living room"></label>
+      <div class="pair"><label class="field">Light<select id="set-light"></select></label><label class="field">Its label<input id="set-light-label" maxlength="30" placeholder="Lights"></label></div>
+      <div class="pair"><label class="field">Scene 1<select id="set-scene-1"></select></label><label class="field">Scene 2<select id="set-scene-2"></select></label></div>
+      <div class="pair"><label class="field">Heating<select id="set-climate"></select></label><label class="field">Its label<input id="set-climate-label" maxlength="30" placeholder="Heating"></label></div>
+      <label class="field">Weather<select id="set-weather"></select></label>
+      <div class="pair"><label class="field">Theme<select id="set-theme"><option value="auto">Automatic (Bento by day, Gallery at night)</option><option value="bento">Bento</option><option value="gallery">Gallery</option></select></label>
+        <label class="field">Change photo every<select id="set-rotate"><option value="1">minute</option><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">hour</option></select></label></div>
+      <button class="button primary" id="set-save">Save</button>
+      <p id="set-status" class="hint" role="status"></p>
+    </div>
     <div class="card">
-      <h2>Home Assistant</h2>
-      <p class="hint">Choose the lights, scenes, heating and weather in the add-on’s Configuration tab.</p>
+      <h2>Checks</h2>
       <ul class="checks" id="checks"></ul>
     </div>
     <div class="card">

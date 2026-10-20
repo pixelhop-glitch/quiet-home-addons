@@ -13,7 +13,7 @@ CONDITIONS = {
 UNAVAILABLE = ('unavailable', 'unknown', None)
 
 
-def read_state(ha, entity_id):
+def read_state(ha, entity_id, missing=UNAVAILABLE):
     if not entity_id:
         return None
     try:
@@ -21,7 +21,7 @@ def read_state(ha, entity_id):
     except Exception as error:  # Home Assistant restarting or the entity misnamed.
         log.warning('Could not read %s: %s', entity_id, error)
         return None
-    return state if state and state.get('state') not in UNAVAILABLE else None
+    return state if state and state.get('state') not in missing else None
 
 
 def _number(value, fallback):
@@ -40,7 +40,8 @@ def controls(options, ha):
             item['detail'] = '%d%%' % round(brightness / 255 * 100)
         items.append(item)
     for entity_id in options.get('scenes') or []:
-        scene = read_state(ha, entity_id)
+        # A scene that has never been activated reports 'unknown'; it still works.
+        scene = read_state(ha, entity_id, missing=('unavailable', None))
         if scene:
             items.append({'id': scene['entity_id'], 'kind': 'scene', 'label': scene['attributes'].get('friendly_name') or entity_id})
     climate = read_state(ha, options.get('climate'))
@@ -83,8 +84,9 @@ def act(options, ha, request):
     """Run one action from the TV. Only configured entities and safe values are accepted."""
     entity_id, action, value = request.get('id'), request.get('action'), request.get('value')
     if action == 'toggle' and entity_id and entity_id == options.get('light'):
-        ha.call('light', 'toggle', {'entity_id': entity_id})
-    elif action == 'activate' and entity_id in (options.get('scenes') or []):
+        # homeassistant.toggle works for lights and for lamps on smart switches.
+        ha.call('homeassistant', 'toggle', {'entity_id': entity_id})
+    elif action == 'activate' and entity_id and entity_id in (options.get('scenes') or []):
         ha.call('scene', 'turn_on', {'entity_id': entity_id})
     elif action == 'set_temperature' and entity_id and entity_id == options.get('climate'):
         state = read_state(ha, entity_id)

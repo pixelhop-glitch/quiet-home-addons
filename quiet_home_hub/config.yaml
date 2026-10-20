@@ -1,5 +1,5 @@
 name: Quiet Home Hub
-version: "0.1.0"
+version: "0.2.0"
 slug: quiet_home_hub
 description: Photos, home controls and family notes for the Quiet Home TV launcher.
 url: https://github.com/pixelhop-glitch/quiet-home-addons
@@ -22,24 +22,5 @@ map:
   - media:rw
 options:
   tv_key: ""
-  theme: auto
-  rotate_minutes: 15
-  room_title: Living room
-  light: ""
-  light_label: Lights
-  scenes: []
-  climate: ""
-  climate_label: Heating
-  weather: ""
 schema:
-  tv_key: password
-  theme: list(auto|bento|gallery)
-  rotate_minutes: int(1,240)
-  room_title: str
-  light: str?
-  light_label: str
-  scenes:
-    - str
-  climate: str?
-  climate_label: str
-  weather: str?
+  tv_key: password?

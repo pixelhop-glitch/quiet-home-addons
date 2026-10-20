@@ -14,22 +14,22 @@ Photos are stored in Home Assistant's media folder at `/media/quiet-home/`
 in full backups when the media folder is selected. You can also copy JPEGs into
 those folders through the Samba share.
 
-## Configuration
+## Setup
 
-| Option | Meaning |
-| --- | --- |
-| `tv_key` | Shared secret the TV sends. Set one and put the same value in the TV build's `hubKey`. |
-| `theme` | Household default: `auto` (Bento by day, Gallery after sunset), `bento` or `gallery`. A choice made on the TV wins. |
-| `rotate_minutes` | How often the background photo changes. |
-| `room_title` | Heading for the controls card. |
-| `light`, `light_label` | One light or light group to toggle, e.g. `light.living_room`. |
-| `scenes` | Up to two scenes, e.g. `scene.movie_night`. |
-| `climate`, `climate_label` | Thermostat for the heating card, e.g. `climate.heating`. |
-| `weather` | Weather entity, e.g. `weather.forecast_home`. |
+Open **Quiet Home → Setup** in the sidebar and pick from your own entities:
+
+- **Light**: one light, light group or switch to toggle from the TV.
+- **Scenes**: up to two scenes, such as a movie scene.
+- **Heating**: the thermostat for the heating card.
+- **Weather**: the weather entity for the forecast card.
+- Room title, labels, theme (Automatic, Bento or Gallery) and how often photos change.
 
 Only these entities can be controlled from the TV, and temperatures outside the
 thermostat's own minimum and maximum are refused. Sunrise and sunset come from
-`sun.sun`. The **TV** tab on the sidebar page shows whether each entity was found.
+`sun.sun`. The Checks card shows whether each chosen entity was found.
+
+The add-on's **Configuration** tab holds one option, `tv_key`: a shared secret the
+TV sends. Put the same value in the TV build's `hubKey`.
 
 ## The TV connection
 

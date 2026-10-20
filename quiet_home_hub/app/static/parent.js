@@ -17,7 +17,7 @@
     tab.onclick = function () {
       document.querySelectorAll('nav button').forEach(function (t) { t.setAttribute('aria-selected', t === tab); });
       document.querySelectorAll('.tab').forEach(function (s) { s.hidden = s.id !== tab.dataset.tab; });
-      if (tab.dataset.tab === 'tv') loadStatus();
+      if (tab.dataset.tab === 'tv') { loadSetup(); loadStatus(); }
     };
   });
 
@@ -87,17 +87,58 @@
     post('api/notes', {title: $('notes-title').value.trim(), items: items}).then(function () { $('notes-status').textContent = 'Saved. The TV picks this up within a minute.'; });
   };
 
-  // TV status
+  // Setup: entity pickers filled from Home Assistant
+  function fill(select, items, current, groups) {
+    select.textContent = '';
+    var none = el('option', '', 'None'); none.value = ''; select.appendChild(none);
+    var known = false;
+    (groups || [{label: null, items: items}]).forEach(function (group) {
+      var parent = select;
+      if (group.label && group.items.length) { parent = el('optgroup'); parent.label = group.label; select.appendChild(parent); }
+      group.items.forEach(function (item) {
+        var option = el('option', '', item.name); option.value = item.id; option.selected = item.id === current; known = known || item.id === current;
+        parent.appendChild(option);
+      });
+    });
+    if (current && !known) { var missing = el('option', '', current + ' (not found)'); missing.value = current; missing.selected = true; select.appendChild(missing); }
+  }
+  function loadSetup() {
+    $('set-status').textContent = 'Loading your entities…';
+    Promise.all([api('api/settings'), api('api/entities')]).then(function (r) {
+      var s = r[0], e = r[1], scenes = s.scenes || [];
+      $('set-room').value = s.room_title || ''; $('set-light-label').value = s.light_label || ''; $('set-climate-label').value = s.climate_label || '';
+      fill($('set-light'), null, s.light, [
+        {label: 'Lights', items: e.light.filter(function (x) { return x.id.indexOf('light.') === 0; })},
+        {label: 'Switches', items: e.light.filter(function (x) { return x.id.indexOf('switch.') === 0; })}]);
+      fill($('set-scene-1'), e.scene, scenes[0]); fill($('set-scene-2'), e.scene, scenes[1]);
+      fill($('set-climate'), e.climate, s.climate); fill($('set-weather'), e.weather, s.weather);
+      $('set-theme').value = s.theme || 'auto';
+      var rotate = $('set-rotate'); if (![].some.call(rotate.options, function (o) { return o.value === String(s.rotate_minutes); })) { var o = el('option', '', s.rotate_minutes + ' minutes'); o.value = s.rotate_minutes; rotate.appendChild(o); }
+      rotate.value = String(s.rotate_minutes);
+      $('set-status').textContent = '';
+    }, function (error) { $('set-status').textContent = error.message; });
+  }
+  $('set-save').onclick = function () {
+    post('api/settings', {
+      room_title: $('set-room').value, light: $('set-light').value, light_label: $('set-light-label').value,
+      scenes: [$('set-scene-1').value, $('set-scene-2').value].filter(Boolean),
+      climate: $('set-climate').value, climate_label: $('set-climate-label').value, weather: $('set-weather').value,
+      theme: $('set-theme').value, rotate_minutes: Number($('set-rotate').value)
+    }).then(function () { $('set-status').textContent = 'Saved. The TV picks this up within a minute.'; loadStatus(); },
+      function (error) { $('set-status').textContent = error.message; });
+  };
+
+  // Checks and TV connection
   function loadStatus() {
     api('api/status').then(function (status) {
       var list = $('checks'); list.textContent = '';
-      if (!status.entities.length) list.appendChild(el('li', '', 'Nothing chosen yet.'));
+      if (!status.entities.length) list.appendChild(el('li', '', 'Nothing chosen yet. Pick entities above and save.'));
       status.entities.forEach(function (check) {
         var li = el('li'), name = el('span'); name.appendChild(document.createTextNode(check.label + ' ')); name.appendChild(el('code', '', check.entity));
         li.appendChild(name); li.appendChild(el('span', check.found ? 'ok' : 'missing', check.found ? 'Found' : 'Not found')); list.appendChild(li);
       });
       $('tv-port').textContent = status.tvPort;
-      $('key-status').textContent = status.keySet ? 'A TV key is set, so only the TV can read the dashboard.' : 'No TV key is set. Add one in Configuration so only the TV can read the dashboard.';
+      $('key-status').textContent = status.keySet ? 'A TV key is set, so only the TV can read the dashboard.' : 'No TV key is set. Add one on the add-on’s Configuration tab so only the TV can read the dashboard.';
     });
   }
 
