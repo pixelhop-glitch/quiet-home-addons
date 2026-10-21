@@ -1,5 +1,6 @@
 """Build the TV's dashboard (see docs/DASHBOARD.md) and run allowlisted actions."""
 import logging
+import time
 import urllib.parse
 
 log = logging.getLogger('quiet-home')
@@ -80,12 +81,27 @@ def build(options, ha, library, notes, key):
     return data
 
 
+def wait_for(condition, timeout=3.0, step=0.25):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if condition():
+            return True
+        time.sleep(step)
+    return False
+
+
 def act(options, ha, request):
     """Run one action from the TV. Only configured entities and safe values are accepted."""
     entity_id, action, value = request.get('id'), request.get('action'), request.get('value')
-    if action == 'toggle' and entity_id and entity_id == options.get('light'):
-        # homeassistant.toggle works for lights and for lamps on smart switches.
-        ha.call('homeassistant', 'toggle', {'entity_id': entity_id})
+    if action in ('turn_on', 'turn_off', 'toggle') and entity_id and entity_id == options.get('light'):
+        before = (read_state(ha, entity_id) or {}).get('state')
+        # The TV sends the state it wants, so quick double presses can't both mean
+        # "on". 'toggle' remains for older TV builds. homeassistant.* works for
+        # lights and for lamps on smart switches.
+        wanted = {'turn_on': 'on', 'turn_off': 'off'}.get(action, 'off' if before == 'on' else 'on')
+        ha.call('homeassistant', action, {'entity_id': entity_id})
+        # Bulbs report their new state a moment later; answer with the real result.
+        wait_for(lambda: (read_state(ha, entity_id) or {}).get('state') == wanted)
     elif action == 'activate' and entity_id and entity_id in (options.get('scenes') or []):
         ha.call('scene', 'turn_on', {'entity_id': entity_id})
     elif action == 'set_temperature' and entity_id and entity_id == options.get('climate'):

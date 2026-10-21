@@ -5,6 +5,7 @@ Assistant's REST API at http://supervisor/core, so no long-lived token is stored
 """
 from datetime import datetime
 import json
+import threading
 import urllib.error
 import urllib.request
 
@@ -64,10 +65,13 @@ class FakeHomeAssistant:
     def states(self):
         return [dict(state, entity_id=entity_id) for entity_id, state in self.entities.items()]
 
+    delay = 1.2  # seconds before a light reports its new state
+
     def call(self, domain, service, data):
         entity = self.entities[data['entity_id']]
-        if (domain, service) in (('light', 'toggle'), ('homeassistant', 'toggle')):
-            entity['state'] = 'off' if entity['state'] == 'on' else 'on'
+        if (domain, service) in (('light', 'toggle'), ('homeassistant', 'toggle'), ('homeassistant', 'turn_on'), ('homeassistant', 'turn_off')):
+            new = {'turn_on': 'on', 'turn_off': 'off'}.get(service, 'off' if entity['state'] == 'on' else 'on')
+            threading.Timer(self.delay, lambda: entity.update(state=new)).start()
         elif (domain, service) == ('scene', 'turn_on'):
             self.entities['light.living_room'].update(state='on')
             self.entities['light.living_room']['attributes']['brightness'] = 38
