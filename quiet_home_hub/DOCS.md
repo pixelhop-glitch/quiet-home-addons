@@ -6,8 +6,23 @@ family notes. Open **Quiet Home** in the sidebar to manage photos and notes.
 ## Photos
 
 Upload from the sidebar page (phones work well through the Home Assistant app).
-Choose **Day**, **Night** or **Any time**. Uploads are rotated upright, resized
-for a 1080p TV and saved without metadata, so phone location data is removed.
+Choose **Day**, **Night** or **Any time**. Uploads are rotated upright, kept at up
+to 4K (3840×2160) and saved without metadata, so phone location data is removed.
+
+### 4K photos in Gallery
+
+The TV draws apps at 1920×1080, but it shows video at full 4K with its own picture
+processing. So the hub turns your photos into a 4K slideshow video (one for day, one
+for night), which Gallery plays behind the clock, pausing on each photo. Bento and
+any TV without the video keep showing normal photos.
+
+- After you add, move or delete photos, the hub rebuilds the video in the
+  background. It re-encodes only the photos next to the change, but the first build
+  can take a while on a Home Assistant Green (roughly a minute per photo). The TV
+  keeps showing the previous video or normal photos until it is ready.
+- Photos uploaded before version 0.4.0 were stored at 2560×1440. They still look
+  better on the video layer, but upload the original again for full 4K detail.
+- The videos are kept in `/media/quiet-home/.video/` and are rebuilt if deleted.
 
 Photos are stored in Home Assistant's media folder at `/media/quiet-home/`
 (`day/`, `night/` and `any/`). They appear in the Media browser and are included

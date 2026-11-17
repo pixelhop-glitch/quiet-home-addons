@@ -18,6 +18,7 @@ import urllib.parse
 import dashboard
 from homeassistant import FakeHomeAssistant, HomeAssistant
 from library import PERIODS, Library
+from slideshow import Slideshow
 
 log = logging.getLogger('quiet-home')
 HERE = Path(__file__).resolve().parent
@@ -36,6 +37,8 @@ IMAGES = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.we
 class Hub:
     def __init__(self, options, ha, library, data_dir):
         self.base, self.ha, self.library = options, ha, library
+        self.slideshow = Slideshow(library, library.root / '.video')
+        library.on_change = self.slideshow.request
         self.notes_file = Path(data_dir) / 'notes.json'
         self.settings_file = Path(data_dir) / 'settings.json'
         self.lock = threading.Lock()
@@ -110,7 +113,7 @@ class Hub:
         return clean
 
     def dashboard(self, key=None):
-        return dashboard.build(self.options, self.ha, self.library, self.notes(), self.key if key is None else key)
+        return dashboard.build(self.options, self.ha, self.library, self.notes(), self.key if key is None else key, self.slideshow)
 
     def status(self):
         checks = []
@@ -177,6 +180,51 @@ class Handler(BaseHTTPRequestHandler):
             return self.error(404, 'not found')
         self.send(200, file.read_bytes(), IMAGES.get(file.suffix.lower(), 'application/octet-stream'), {'Cache-Control': 'max-age=86400'})
 
+    def stream(self, file, kind):
+        """Send a large file in chunks, honouring a single Range request so the TV can seek."""
+        if not file:
+            return self.error(404, 'not found')
+        size = file.stat().st_size
+        start, end, status = 0, size - 1, 200
+        match = re.match(r'^bytes=(\d*)-(\d*)$', self.headers.get('Range') or '')
+        if match and (match.group(1) or match.group(2)):
+            if match.group(1):
+                start = int(match.group(1))
+                end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
+            else:
+                start = max(0, size - int(match.group(2)))
+            if start > end:
+                self.send_response(416)
+                self.send_header('Content-Range', 'bytes */%d' % size)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            status = 206
+        self.send_response(status)
+        self.send_header('Content-Type', kind)
+        self.send_header('Accept-Ranges', 'bytes')
+        self.send_header('Content-Length', str(end - start + 1))
+        if status == 206:
+            self.send_header('Content-Range', 'bytes %d-%d/%d' % (start, end, size))
+        self.send_header('Cache-Control', 'max-age=86400')  # file names change when the video does
+        for name, value in self.cors().items():
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command == 'HEAD':
+            return
+        remaining = end - start + 1
+        try:
+            with open(file, 'rb') as source:
+                source.seek(start)
+                while remaining > 0:
+                    chunk = source.read(min(1 << 20, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the TV stopped reading (seek or close)
+
 
 class TVHandler(Handler):
     """Read-only dashboard, photos and allowlisted actions for the TV."""
@@ -201,8 +249,13 @@ class TVHandler(Handler):
         if path == '/api/dashboard':
             return self.json(self.hub.dashboard())
         if path.startswith('/photos/'):
-            return self.image(self.hub.library.path(path[len('/photos/'):]))
+            # The TV's app layer is 1920×1080, so it gets a screen-sized copy.
+            return self.image(self.hub.library.display(path[len('/photos/'):]))
+        if path.startswith('/video/'):
+            return self.stream(self.hub.slideshow.file(path[len('/video/'):]), 'video/mp4')
         self.error(404, 'not found')
+
+    do_HEAD = do_GET
 
     def do_POST(self):
         path, query = self.parts()

@@ -56,7 +56,7 @@ def controls(options, ha):
     return items
 
 
-def build(options, ha, library, notes, key):
+def build(options, ha, library, notes, key, slideshow=None):
     suffix = '?' + urllib.parse.urlencode({'key': key}) if key else ''
     data = {'version': 1, 'theme': options.get('theme', 'auto'),
             'backgrounds': {'rotateMinutes': options.get('rotate_minutes', 15), 'day': [], 'night': []}, 'widgets': []}
@@ -70,6 +70,15 @@ def build(options, ha, library, notes, key):
         entry = {'url': 'photos/' + photo['id'] + suffix, 'caption': photo['caption']} if photo['caption'] else 'photos/' + photo['id'] + suffix
         for period in (('day', 'night') if photo['period'] == 'any' else (photo['period'],)):
             data['backgrounds'][period].append(entry)
+    # 4K slideshow videos for the TV's video layer; the launcher falls back to the photos above.
+    captions = {photo['id']: photo['caption'] for photo in library.photos()}
+    for period in ('day', 'night'):
+        manifest = slideshow.manifest(period) if slideshow else None
+        if manifest:
+            data['backgrounds'].setdefault('video', {})[period] = {
+                'url': 'video/' + manifest['file'] + suffix, 'hold': manifest['hold'], 'duration': manifest['duration'], 'tail': manifest.get('tail'),
+                'segments': [{'start': s['start'], 'caption': captions.get(s['id'], ''), 'url': 'photos/' + s['id'] + suffix}
+                             for s in manifest['segments']]}
     items = controls(options, ha)
     if items:
         data['widgets'].append({'type': 'controls', 'title': options.get('room_title') or 'Home', 'items': items})

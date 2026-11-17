@@ -2,7 +2,8 @@
 
 Photos live in day/, night/ and any/ folders under /media/quiet-home, so they can
 also be added through the Samba share or Home Assistant's media browser. Uploads
-are rotated upright, resized for a 1080p TV and saved without metadata.
+are rotated upright, kept at up to 4K for the TV's video layer and saved without
+metadata. The TV's normal picture layer gets 1920×1080 copies (`display`).
 """
 import io
 import json
@@ -17,7 +18,8 @@ from PIL import Image, ImageOps
 PERIODS = ('day', 'night', 'any')
 KINDS = {'.jpg', '.jpeg', '.png', '.webp'}
 NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$')
-MAX_SIZE = (2560, 1440)
+MAX_SIZE = (3840, 2160)  # 4K source for the slideshow video
+DISPLAY_SIZE = (1920, 1080)  # the TV's app layer measured 1920×1080 at pixel ratio 1
 THUMB_SIZE = (480, 480)
 
 
@@ -28,7 +30,9 @@ class Library:
         for period in PERIODS:
             (self.root / period).mkdir(parents=True, exist_ok=True)
             (self.root / '.thumbs' / period).mkdir(parents=True, exist_ok=True)
+            (self.root / '.display' / period).mkdir(parents=True, exist_ok=True)
         self.captions_file = self.root / 'captions.json'
+        self.on_change = lambda: None  # the slideshow sets this to rebuild its videos
 
     def _captions(self):
         try:
@@ -71,6 +75,7 @@ class Library:
         # Saving without exif= drops camera metadata, including GPS location.
         image.save(self.root / period / name, 'JPEG', quality=85, optimize=True, progressive=True)
         self._thumbnail(image, period, name)
+        self.on_change()
         photo_id = period + '/' + name
         with self.lock:
             captions = self._captions()
@@ -83,6 +88,21 @@ class Library:
         thumb = image.copy()
         thumb.thumbnail(THUMB_SIZE, Image.LANCZOS)
         thumb.convert('RGB').save(self.root / '.thumbs' / period / (Path(name).stem + '.jpg'), 'JPEG', quality=80)
+
+    def display(self, photo_id):
+        """A 1920×1080-bounded copy for the TV's app layer, made on first request."""
+        file = self.path(photo_id)
+        if not file:
+            return None
+        copy = self.root / '.display' / file.parent.name / (file.stem + '.jpg')
+        if not copy.is_file() or copy.stat().st_mtime < file.stat().st_mtime:
+            with Image.open(file) as image:
+                image = ImageOps.exif_transpose(image).convert('RGB')
+                image.thumbnail(DISPLAY_SIZE, Image.LANCZOS)
+                temp = copy.with_suffix('.tmp')
+                image.save(temp, 'JPEG', quality=88, optimize=True, progressive=True)
+                os.replace(temp, copy)
+        return copy
 
     def thumb(self, photo_id):
         file = self.path(photo_id)
@@ -109,11 +129,15 @@ class Library:
                 os.replace(file, self.root / period / file.name)
                 if old_thumb.is_file():
                     os.replace(old_thumb, self.root / '.thumbs' / period / old_thumb.name)
+                old_display = self.root / '.display' / file.parent.name / (file.stem + '.jpg')
+                if old_display.is_file():
+                    old_display.unlink()
                 photo_id = period + '/' + file.name
             text = text if caption is None else caption[:120]
             if text:
                 captions[photo_id] = text
             self._save_captions(captions)
+        self.on_change()
         return photo_id
 
     def delete(self, photo_id):
@@ -121,10 +145,12 @@ class Library:
         if not file:
             raise ValueError('unknown photo')
         with self.lock:
-            thumb = self.root / '.thumbs' / file.parent.name / (file.stem + '.jpg')
             file.unlink()
-            if thumb.is_file():
-                thumb.unlink()
+            for copy in (self.root / '.thumbs' / file.parent.name / (file.stem + '.jpg'),
+                         self.root / '.display' / file.parent.name / (file.stem + '.jpg')):
+                if copy.is_file():
+                    copy.unlink()
             captions = self._captions()
             if captions.pop(photo_id, None) is not None:
                 self._save_captions(captions)
+        self.on_change()
